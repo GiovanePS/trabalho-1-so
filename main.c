@@ -27,6 +27,11 @@ typedef struct {
   pthread_mutex_t mutex;
 } EstadoJogo;
 
+// Estrutura da Torre
+typedef struct {
+  int x, y;
+} Torre;
+
 // Constantes do Jogo
 #define NUM_NAVES 10
 #define NUM_FOGUETES 5
@@ -36,7 +41,7 @@ typedef struct {
 int tela_altura, tela_largura;
 
 // Funções de Inicialização
-void inicializa_jogo(EstadoJogo *jogo) {
+void inicializa_jogo(EstadoJogo *jogo, Torre *torre) {
   jogo->naves = (Nave *)malloc(NUM_NAVES * sizeof(Nave));
   jogo->foguetes = (Foguete *)malloc(NUM_FOGUETES * sizeof(Foguete));
   jogo->num_naves = NUM_NAVES;
@@ -55,6 +60,10 @@ void inicializa_jogo(EstadoJogo *jogo) {
   for (int i = 0; i < NUM_FOGUETES; i++) {
     jogo->foguetes[i].ativa = 0;
   }
+
+  // Inicializa a torre no centro da tela
+  torre->x = tela_largura / 2;
+  torre->y = tela_altura - 1;
 }
 
 // Função para Movimentação das Naves
@@ -77,24 +86,54 @@ void *movimenta_naves(void *arg) {
   return NULL;
 }
 
-// Função para Disparo de Foguetes
-void *dispara_foguetes(void *arg) {
-  EstadoJogo *jogo = (EstadoJogo *)arg;
-  while (1) {
-    pthread_mutex_lock(&jogo->mutex);
-    if (jogo->foguetes_disponiveis > 0) {
-      for (int i = 0; i < jogo->num_foguetes; i++) {
-        if (!jogo->foguetes[i].ativa) {
-          jogo->foguetes[i].ativa = 1;
-          jogo->foguetes[i].x = rand() % tela_largura;
-          jogo->foguetes[i].y = tela_altura - 1;
-          jogo->foguetes_disponiveis--;
-          break;
-        }
+// Função para Movimentar um Foguete Disparado pela Torre
+void *movimenta_foguete_torre(void *arg) {
+  Foguete *foguete = (Foguete *)arg;
+  while (foguete->y > 0) {
+    foguete->y--;
+    usleep(VELOCIDADE_FOGUETES);
+  }
+  foguete->ativa = 0;
+  return NULL;
+}
+
+// Função para a Torre Disparar Foguetes
+void torre_dispara(EstadoJogo *jogo) {
+  Torre torre;
+  torre.x = tela_largura / 2;
+  torre.y = tela_altura - 1;
+
+  pthread_mutex_lock(&jogo->mutex);
+  if (jogo->foguetes_disponiveis > 0) {
+    for (int i = 0; i < jogo->num_foguetes; i++) {
+      if (!jogo->foguetes[i].ativa) {
+        jogo->foguetes[i].ativa = 1;
+        jogo->foguetes[i].x = torre.x;
+        jogo->foguetes[i].y = torre.y - 1;
+
+        // Cria uma thread para mover o foguete da torre
+        pthread_t thread_foguete;
+        pthread_create(&thread_foguete, NULL, movimenta_foguete_torre,
+                       (void *)&jogo->foguetes[i]);
+        pthread_detach(thread_foguete);
+
+        jogo->foguetes_disponiveis--;
+        break;
       }
     }
-    pthread_mutex_unlock(&jogo->mutex);
-    usleep(VELOCIDADE_FOGUETES);
+  }
+  pthread_mutex_unlock(&jogo->mutex);
+}
+
+// Função para Capturar Entrada do Usuário
+void *captura_entrada(void *arg) {
+  EstadoJogo *jogo = (EstadoJogo *)arg;
+  while (1) {
+    int ch = getch();
+    if (ch == ' ') {
+      torre_dispara(jogo);
+    }
+    usleep(100000); // Sleep to avoid high CPU usage
   }
   return NULL;
 }
@@ -105,6 +144,7 @@ void *atualiza_interface(void *arg) {
   initscr();
   noecho();
   curs_set(FALSE);
+  timeout(0); // Non-blocking input
   getmaxyx(stdscr, tela_altura, tela_largura);
 
   while (1) {
@@ -123,13 +163,17 @@ void *atualiza_interface(void *arg) {
       }
     }
 
+    // Desenha a torre
+    mvprintw(tela_altura - 1, tela_largura / 2, "T");
+
     mvprintw(0, 0, "Foguetes Disponíveis: %d", jogo->foguetes_disponiveis);
     mvprintw(1, 0, "Naves Abatidas: %d", jogo->naves_abatidas);
     mvprintw(2, 0, "Naves Atingidas: %d", jogo->naves_atingidas);
 
     pthread_mutex_unlock(&jogo->mutex);
     refresh();
-    usleep(100000);
+
+    usleep(100000); // Sleep to avoid high CPU usage
   }
 
   endwin();
@@ -140,22 +184,23 @@ void *atualiza_interface(void *arg) {
 int main() {
   srand(time(NULL));
   EstadoJogo jogo;
+  Torre torre;
 
   initscr();
   getmaxyx(stdscr, tela_altura, tela_largura);
   endwin(); // End ncurses mode so we can safely initialize game
 
-  inicializa_jogo(&jogo);
+  inicializa_jogo(&jogo, &torre);
 
-  pthread_t thread_naves, thread_foguetes, thread_interface;
+  pthread_t thread_naves, thread_interface, thread_entrada;
 
   pthread_create(&thread_naves, NULL, movimenta_naves, (void *)&jogo);
-  pthread_create(&thread_foguetes, NULL, dispara_foguetes, (void *)&jogo);
   pthread_create(&thread_interface, NULL, atualiza_interface, (void *)&jogo);
+  pthread_create(&thread_entrada, NULL, captura_entrada, (void *)&jogo);
 
   pthread_join(thread_naves, NULL);
-  pthread_join(thread_foguetes, NULL);
   pthread_join(thread_interface, NULL);
+  pthread_join(thread_entrada, NULL);
 
   pthread_mutex_destroy(&jogo.mutex);
   free(jogo.naves);
@@ -163,4 +208,3 @@ int main() {
 
   return 0;
 }
-
