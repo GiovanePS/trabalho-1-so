@@ -35,8 +35,8 @@ typedef struct {
 // Constantes do Jogo
 #define NUM_NAVES 10
 #define NUM_FOGUETES 5
-#define VELOCIDADE_NAVES 500000    // em microsegundos
-#define VELOCIDADE_FOGUETES 200000 // em microsegundos
+#define VELOCIDADE_NAVES 500000   // em microsegundos
+#define VELOCIDADE_FOGUETES 20000 // em microsegundos
 
 int tela_altura, tela_largura;
 
@@ -63,7 +63,7 @@ void inicializa_jogo(EstadoJogo *jogo, Torre *torre) {
 
   // Inicializa a torre no centro da tela
   torre->x = tela_largura / 2;
-  torre->y = tela_altura - 1;
+  torre->y = tela_altura - 4; // Ajusta para o tamanho da torre
 }
 
 // Função para Movimentação das Naves
@@ -98,18 +98,14 @@ void *movimenta_foguete_torre(void *arg) {
 }
 
 // Função para a Torre Disparar Foguetes
-void torre_dispara(EstadoJogo *jogo) {
-  Torre torre;
-  torre.x = tela_largura / 2;
-  torre.y = tela_altura - 1;
-
+void torre_dispara(EstadoJogo *jogo, Torre *torre) {
   pthread_mutex_lock(&jogo->mutex);
   if (jogo->foguetes_disponiveis > 0) {
     for (int i = 0; i < jogo->num_foguetes; i++) {
       if (!jogo->foguetes[i].ativa) {
         jogo->foguetes[i].ativa = 1;
-        jogo->foguetes[i].x = torre.x;
-        jogo->foguetes[i].y = torre.y - 1;
+        jogo->foguetes[i].x = torre->x;
+        jogo->foguetes[i].y = torre->y - 1;
 
         // Cria uma thread para mover o foguete da torre
         pthread_t thread_foguete;
@@ -125,13 +121,22 @@ void torre_dispara(EstadoJogo *jogo) {
   pthread_mutex_unlock(&jogo->mutex);
 }
 
+void recarrega_torre(EstadoJogo *jogo, Torre *torre) {
+  pthread_mutex_lock(&jogo->mutex);
+  jogo->foguetes_disponiveis++;
+  pthread_mutex_unlock(&jogo->mutex);
+}
+
 // Função para Capturar Entrada do Usuário
 void *captura_entrada(void *arg) {
   EstadoJogo *jogo = (EstadoJogo *)arg;
+  Torre torre = {tela_largura / 2, tela_altura - 4};
   while (1) {
     int ch = getch();
     if (ch == ' ') {
-      torre_dispara(jogo);
+      torre_dispara(jogo, &torre);
+    } else if (ch == 'r') {
+      recarrega_torre(jogo, &torre);
     }
     usleep(100000); // Sleep to avoid high CPU usage
   }
@@ -163,8 +168,12 @@ void *atualiza_interface(void *arg) {
       }
     }
 
-    // Desenha a torre
-    mvprintw(tela_altura - 1, tela_largura / 2, "T");
+    // Desenha a torre maior
+    int torre_x = tela_largura / 2;
+    mvprintw(tela_altura - 4, torre_x - 1, "/|\\");
+    mvprintw(tela_altura - 3, torre_x - 2, "/_|_\\");
+    mvprintw(tela_altura - 2, torre_x - 2, " | | ");
+    mvprintw(tela_altura - 1, torre_x - 2, " | | ");
 
     mvprintw(0, 0, "Foguetes Disponíveis: %d", jogo->foguetes_disponiveis);
     mvprintw(1, 0, "Naves Abatidas: %d", jogo->naves_abatidas);
@@ -184,11 +193,12 @@ void *atualiza_interface(void *arg) {
 int main() {
   srand(time(NULL));
   EstadoJogo jogo;
-  Torre torre;
 
   initscr();
   getmaxyx(stdscr, tela_altura, tela_largura);
   endwin(); // End ncurses mode so we can safely initialize game
+
+  Torre torre = {tela_largura / 2, tela_altura - 4};
 
   inicializa_jogo(&jogo, &torre);
 
