@@ -40,9 +40,10 @@ typedef struct {
 } entrada_args;
 
 // Constantes do Jogo
-#define NUM_NAVES 10
-#define NUM_FOGUETES 5
-#define VELOCIDADE_NAVES 500000
+int dificuldade;
+int NUM_NAVES = 10;
+int NUM_FOGUETES = 5;
+int VELOCIDADE_NAVES = 500000;
 #define VELOCIDADE_FOGUETES 20000
 
 int tela_altura, tela_largura;
