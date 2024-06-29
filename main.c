@@ -42,8 +42,8 @@ typedef struct {
 // Constantes do Jogo
 #define NUM_NAVES 10
 #define NUM_FOGUETES 5
-#define VELOCIDADE_NAVES 500000   // em microsegundos
-#define VELOCIDADE_FOGUETES 20000 // em microsegundos
+#define VELOCIDADE_NAVES 500000
+#define VELOCIDADE_FOGUETES 20000
 
 int tela_altura, tela_largura;
 
@@ -97,6 +97,43 @@ typedef struct {
   Foguete *foguete;
   int direcao;
 } disparo_args;
+
+void *verifica_colisao(void *arg) {
+  EstadoJogo *jogo = (EstadoJogo *)arg;
+  while (1) {
+    for (int i = 0; i < NUM_NAVES; i++) {
+      pthread_mutex_lock(&jogo->mutex);
+      Nave nave = jogo->naves[i];
+      pthread_mutex_unlock(&jogo->mutex);
+
+      if (!nave.ativa) {
+        continue;
+      }
+
+      for (int j = 0; j < NUM_FOGUETES; j++) {
+        pthread_mutex_lock(&jogo->mutex);
+        Foguete foguete = jogo->foguetes[j];
+        pthread_mutex_unlock(&jogo->mutex);
+
+        if (!foguete.ativa) {
+          continue;
+        }
+
+        // Update collision detection logic
+        if (foguete.x >= nave.x && foguete.x <= nave.x + 6 &&
+            foguete.y == nave.y) {
+          pthread_mutex_lock(&jogo->mutex);
+          jogo->naves[i].ativa = 0;
+          jogo->foguetes[j].ativa = 0;
+          jogo->naves_abatidas++;
+          pthread_mutex_unlock(&jogo->mutex);
+        }
+      }
+    }
+    // Add a small delay to prevent rapid incrementing
+    usleep(10000); // 10 milliseconds
+  }
+}
 
 // Função para Movimentar um Foguete Disparado pela Torre
 void *movimenta_foguete_torre(void *arg) {
@@ -268,16 +305,18 @@ int main() {
 
   inicializa_jogo(&jogo, &torre);
 
-  pthread_t thread_naves, thread_interface, thread_entrada;
+  pthread_t thread_naves, thread_interface, thread_entrada, thread_colisao;
 
   entrada_args args = {&jogo, &torre};
   pthread_create(&thread_naves, NULL, movimenta_naves, (void *)&jogo);
   pthread_create(&thread_interface, NULL, atualiza_interface, (void *)&args);
   pthread_create(&thread_entrada, NULL, captura_entrada, (void *)&args);
+  pthread_create(&thread_colisao, NULL, verifica_colisao, (void *)&jogo);
 
   pthread_join(thread_naves, NULL);
   pthread_join(thread_interface, NULL);
   pthread_join(thread_entrada, NULL);
+  pthread_join(thread_colisao, NULL);
 
   pthread_mutex_destroy(&jogo.mutex);
   free(jogo.naves);
