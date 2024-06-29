@@ -13,6 +13,7 @@ typedef struct {
 
 typedef struct {
   int x, y;
+  int direcao;
   int ativa;
 } Foguete;
 
@@ -94,23 +95,28 @@ void *movimenta_naves(void *arg) {
 
 typedef struct {
   Foguete *foguete;
-  Torre *torre;
+  int direcao;
 } disparo_args;
 
 // Função para Movimentar um Foguete Disparado pela Torre
 void *movimenta_foguete_torre(void *arg) {
   disparo_args *args = (disparo_args *)arg;
   Foguete *foguete = (Foguete *)args->foguete;
-  Torre *torre = (Torre *)args->torre;
+  int direcao = (int)args->direcao;
+  foguete->direcao = direcao;
   while (foguete->y > 0 && foguete->x > 0 && foguete->x < tela_largura) {
-    if (torre->direcao == 1) {
+    if (direcao == 0) {
+      foguete->x--;
+    } else if (direcao == 1) {
       foguete->y--;
       foguete->x -= 2;
-    } else if (torre->direcao == 2) {
+    } else if (direcao == 2) {
       foguete->y--;
-    } else if (torre->direcao == 3) {
+    } else if (direcao == 3) {
       foguete->y--;
       foguete->x += 2;
+    } else {
+      foguete->x++;
     }
     usleep(VELOCIDADE_FOGUETES);
   }
@@ -132,7 +138,7 @@ void torre_dispara(EstadoJogo *jogo, Torre *torre) {
         // Cria uma thread para mover o foguete da torre
         pthread_t thread_foguete;
         args->foguete = &jogo->foguetes[i];
-        args->torre = torre;
+        args->direcao = torre->direcao;
         pthread_create(&thread_foguete, NULL, movimenta_foguete_torre,
                        (void *)args);
         pthread_detach(thread_foguete);
@@ -166,12 +172,10 @@ void *captura_entrada(void *arg) {
       recarrega_torre(jogo, torre);
     }
 
-    if (ch == 'a') {
-      torre->direcao = 1;
-    } else if (ch == 'w') {
-      torre->direcao = 2;
-    } else if (ch == 'd') {
-      torre->direcao = 3;
+    if (ch == 'a' && torre->direcao != 0) {
+      torre->direcao -= 1;
+    } else if (ch == 'd' && torre->direcao != 4) {
+      torre->direcao += 1;
     }
 
     usleep(100000);
@@ -201,20 +205,25 @@ void *atualiza_interface(void *arg) {
     }
 
     for (int i = 0; i < jogo->num_foguetes; i++) {
-      if (jogo->foguetes[i].ativa) {
-        if (torre->direcao == 1) {
-          mvprintw(jogo->foguetes[i].y, jogo->foguetes[i].x, "\\");
-        } else if (torre->direcao == 2) {
-          mvprintw(jogo->foguetes[i].y, jogo->foguetes[i].x, "|");
-        } else if (torre->direcao == 3) {
-          mvprintw(jogo->foguetes[i].y, jogo->foguetes[i].x, "/");
+      Foguete foguete = jogo->foguetes[i];
+      if (foguete.ativa) {
+        if (foguete.direcao == 0 || foguete.direcao == 4) {
+          mvprintw(foguete.y, foguete.x, "__");
+        } else if (foguete.direcao == 1) {
+          mvprintw(foguete.y, foguete.x, "\\");
+        } else if (foguete.direcao == 2) {
+          mvprintw(foguete.y, foguete.x, "|");
+        } else if (foguete.direcao == 3) {
+          mvprintw(foguete.y, foguete.x, "/");
         }
       }
     }
 
     // Desenha a torre
     int torre_x = tela_largura / 2;
-    if (torre->direcao == 1) {
+    if (torre->direcao == 0) {
+      mvprintw(tela_altura - 5, torre_x - 3, "____");
+    } else if (torre->direcao == 1) {
       mvprintw(tela_altura - 6, torre_x - 1, "\\  ");
       mvprintw(tela_altura - 5, torre_x - 1, " \\ ");
     } else if (torre->direcao == 2) {
@@ -223,6 +232,8 @@ void *atualiza_interface(void *arg) {
     } else if (torre->direcao == 3) {
       mvprintw(tela_altura - 6, torre_x - 1, "  /");
       mvprintw(tela_altura - 5, torre_x - 1, " / ");
+    } else {
+      mvprintw(tela_altura - 5, torre_x, "____");
     }
 
     mvprintw(tela_altura - 4, torre_x - 1, "/|\\");
