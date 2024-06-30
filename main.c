@@ -39,8 +39,6 @@ typedef struct {
   Torre *torre;
 } entrada_args;
 
-// Constantes do Jogo
-int dificuldade;
 int NUM_NAVES = 10;
 int NUM_FOGUETES = 5;
 int VELOCIDADE_NAVES = 500000;
@@ -48,7 +46,6 @@ int VELOCIDADE_NAVES = 500000;
 
 int tela_altura, tela_largura;
 
-// Funções de Inicialização
 void inicializa_jogo(EstadoJogo *jogo, Torre *torre) {
   jogo->naves = (Nave *)malloc(NUM_NAVES * sizeof(Nave));
   jogo->foguetes = (Foguete *)malloc(NUM_FOGUETES * sizeof(Foguete));
@@ -131,12 +128,11 @@ void *verifica_colisao(void *arg) {
         }
       }
     }
-    // Add a small delay to prevent rapid incrementing
-    usleep(10000); // 10 milliseconds
+
+    usleep(10000);
   }
 }
 
-// Função para Movimentar um Foguete Disparado pela Torre
 void *movimenta_foguete_torre(void *arg) {
   disparo_args *args = (disparo_args *)arg;
   Foguete *foguete = (Foguete *)args->foguete;
@@ -286,19 +282,49 @@ void *atualiza_interface(void *arg) {
     pthread_mutex_unlock(&jogo->mutex);
     refresh();
 
-    usleep(100000); // Sleep to avoid high CPU usage
+    usleep(100000);
   }
 
   endwin();
   return NULL;
 }
 
-// Função Principal
 int main() {
   srand(time(NULL));
   EstadoJogo jogo;
 
   initscr();
+  cbreak();
+  noecho();
+  keypad(stdscr, TRUE);
+
+  printw("Escolha o nível de dificuldade:\n");
+  printw("[1] Fácil\n");
+  printw("[2] Médio\n");
+  printw("[3] Difícil\n");
+  int input = getch();
+  switch (input) {
+  case '1':
+    NUM_NAVES = 5;
+    NUM_FOGUETES = 10;
+    VELOCIDADE_NAVES = 1000000;
+    break;
+  case '2':
+    NUM_NAVES = 10;
+    NUM_FOGUETES = 5;
+    VELOCIDADE_NAVES = 500000;
+    break;
+  case '3':
+    NUM_NAVES = 15;
+    NUM_FOGUETES = 3;
+    VELOCIDADE_NAVES = 200000;
+    break;
+  default:
+    printw("Opção inválida. Saindo...\n");
+    endwin();
+    return 1;
+  };
+
   getmaxyx(stdscr, tela_altura, tela_largura);
   endwin(); // End ncurses mode so we can safely initialize game
 

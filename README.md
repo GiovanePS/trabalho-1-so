@@ -26,7 +26,7 @@ mais de 50% das naves chegaram no solo  (derrota do jogador).
 ### 1. Clone o repositorio:
 `git clone https://github.com/GiovanePS/space-defenders.git`
 
-### 2. Compile com CMake:
+### 2. Compile:
 ```
 gcc -o main main.c -lpthread -lncurses
 ```
