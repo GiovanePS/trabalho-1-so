@@ -46,6 +46,16 @@ int VELOCIDADE_NAVES = 500000;
 
 int tela_altura, tela_largura;
 
+int is_position_free(EstadoJogo *jogo, int x, int y) {
+  for (int i = 0; i < jogo->num_naves; i++) {
+    if (jogo->naves[i].ativa && jogo->naves[i].x >= x &&
+        jogo->naves[i].x <= x + 6) {
+      return 0;
+    }
+  }
+  return 1;
+}
+
 void inicializa_jogo(EstadoJogo *jogo, Torre *torre) {
   jogo->naves = (Nave *)malloc(NUM_NAVES * sizeof(Nave));
   jogo->foguetes = (Foguete *)malloc(NUM_FOGUETES * sizeof(Foguete));
@@ -57,8 +67,14 @@ void inicializa_jogo(EstadoJogo *jogo, Torre *torre) {
   pthread_mutex_init(&jogo->mutex, NULL);
 
   for (int i = 0; i < NUM_NAVES; i++) {
-    jogo->naves[i].x = rand() % tela_largura;
-    jogo->naves[i].y = 0;
+    int x, y;
+    do {
+      x = rand() % (tela_largura - 6);
+      y = 0;
+    } while (!is_position_free(jogo, x, y));
+
+    jogo->naves[i].x = x;
+    jogo->naves[i].y = y;
     jogo->naves[i].ativa = 1;
   }
 
@@ -117,7 +133,6 @@ void *verifica_colisao(void *arg) {
           continue;
         }
 
-        // Update collision detection logic
         if (foguete.x >= nave.x && foguete.x <= nave.x + 6 &&
             foguete.y == nave.y) {
           pthread_mutex_lock(&jogo->mutex);
@@ -187,7 +202,11 @@ void torre_dispara(EstadoJogo *jogo, Torre *torre) {
 
 void recarrega_torre(EstadoJogo *jogo, Torre *torre) {
   pthread_mutex_lock(&jogo->mutex);
-  jogo->foguetes_disponiveis++;
+
+  if (jogo->foguetes_disponiveis < NUM_FOGUETES) {
+    jogo->foguetes_disponiveis++;
+  }
+
   pthread_mutex_unlock(&jogo->mutex);
 }
 
