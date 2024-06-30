@@ -56,6 +56,45 @@ int is_position_free(EstadoJogo *jogo, int x, int y) {
   return 1;
 }
 
+int todas_naves_morreram(EstadoJogo *jogo) {
+  pthread_mutex_lock(&jogo->mutex);
+  int all_dead = 1;
+  for (int i = 0; i < jogo->num_naves; i++) {
+    if (jogo->naves[i].ativa) {
+      all_dead = 0;
+      break;
+    }
+  }
+  pthread_mutex_unlock(&jogo->mutex);
+  return all_dead;
+}
+
+void verifica_fim_jogo(EstadoJogo *jogo) {
+  pthread_mutex_lock(&jogo->mutex);
+  int naves_abatidas = jogo->naves_abatidas;
+  int naves_atingidas = jogo->naves_atingidas;
+  int total_naves = jogo->num_naves;
+  pthread_mutex_unlock(&jogo->mutex);
+
+  if (naves_abatidas >= total_naves / 2 && todas_naves_morreram(jogo)) {
+    // Vitória do jogador
+    clear();
+    mvprintw(tela_altura / 2, tela_largura / 2 - 5, "Vitória!");
+    refresh();
+    usleep(2000000); // Pausa para exibir a mensagem
+    endwin();
+    exit(0);
+  } else if (naves_atingidas >= total_naves / 2) {
+    // Derrota do jogador
+    clear();
+    mvprintw(tela_altura / 2, tela_largura / 2 - 5, "Derrota!");
+    refresh();
+    usleep(2000000); // Pausa para exibir a mensagem
+    endwin();
+    exit(0);
+  }
+}
+
 void inicializa_jogo(EstadoJogo *jogo, Torre *torre) {
   jogo->naves = (Nave *)malloc(NUM_NAVES * sizeof(Nave));
   jogo->foguetes = (Foguete *)malloc(NUM_FOGUETES * sizeof(Foguete));
@@ -300,6 +339,8 @@ void *atualiza_interface(void *arg) {
 
     pthread_mutex_unlock(&jogo->mutex);
     refresh();
+
+    verifica_fim_jogo(jogo);
 
     usleep(100000);
   }
