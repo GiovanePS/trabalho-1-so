@@ -1,148 +1,146 @@
+#include <linux/limits.h>
 #include <ncurses.h>
 #include <pthread.h>
+#include <semaphore.h>
+#include <stdbool.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <time.h>
 #include <unistd.h>
 
-// Estruturas de Dados
 typedef struct {
   int x, y;
   int ativa;
+  pthread_mutex_t mutex;
 } Nave;
 
 typedef struct {
   int x, y;
   int direcao;
-  int ativa;
+  int ativo;
+  pthread_mutex_t mutex;
 } Foguete;
 
-typedef struct {
-  Nave *naves;
-  Foguete *foguetes;
-  int num_naves;
-  int num_foguetes;
-  int foguetes_disponiveis;
-  int naves_abatidas;
-  int naves_atingidas;
-  pthread_mutex_t mutex;
-} EstadoJogo;
-
-// Estrutura da Torre
 typedef struct {
   int x, y;
   int direcao;
 } Torre;
 
 typedef struct {
-  EstadoJogo *jogo;
   Torre *torre;
 } entrada_args;
 
-int NUM_NAVES = 10;
-int NUM_FOGUETES = 5;
+int NUM_NAVES;
+int NUM_FOGUETES;
+
+int foguetes_disponiveis;
+pthread_mutex_t mutex_foguetes_disponiveis;
+
+int naves_abatidas = 0;
+pthread_mutex_t mutex_naves_abatidas;
+
+int naves_atingidas = 0;
+pthread_mutex_t mutex_naves_atingidas;
+
 int VELOCIDADE_NAVES = 500000;
-#define VELOCIDADE_FOGUETES 20000
+int VELOCIDADE_FOGUETES = 20000;
 
 int tela_altura, tela_largura;
 
-int is_position_free(EstadoJogo *jogo, int x, int y) {
-  for (int i = 0; i < jogo->num_naves; i++) {
-    if (jogo->naves[i].ativa && jogo->naves[i].x >= x &&
-        jogo->naves[i].x <= x + 6) {
-      return 0;
-    }
-  }
-  return 1;
-}
+pthread_t *naves_threads;
+Nave *naves;
+pthread_t *foguetes_threads;
+Foguete *foguetes;
 
-int todas_naves_morreram(EstadoJogo *jogo) {
-  pthread_mutex_lock(&jogo->mutex);
-  int all_dead = 1;
-  for (int i = 0; i < jogo->num_naves; i++) {
-    if (jogo->naves[i].ativa) {
-      all_dead = 0;
-      break;
-    }
-  }
-  pthread_mutex_unlock(&jogo->mutex);
-  return all_dead;
-}
-
-void verifica_fim_jogo(EstadoJogo *jogo) {
-  pthread_mutex_lock(&jogo->mutex);
-  int naves_abatidas = jogo->naves_abatidas;
-  int naves_atingidas = jogo->naves_atingidas;
-  int total_naves = jogo->num_naves;
-  pthread_mutex_unlock(&jogo->mutex);
-
-  if (naves_abatidas >= total_naves / 2 && todas_naves_morreram(jogo)) {
-    // Vitória do jogador
-    clear();
-    mvprintw(tela_altura / 2, tela_largura / 2 - 5, "Vitória!");
-    refresh();
-    usleep(2000000); // Pausa para exibir a mensagem
-    endwin();
-    exit(0);
-  } else if (naves_atingidas >= total_naves / 2) {
-    // Derrota do jogador
-    clear();
-    mvprintw(tela_altura / 2, tela_largura / 2 - 5, "Derrota!");
-    refresh();
-    usleep(2000000); // Pausa para exibir a mensagem
-    endwin();
-    exit(0);
-  }
-}
-
-void inicializa_jogo(EstadoJogo *jogo, Torre *torre) {
-  jogo->naves = (Nave *)malloc(NUM_NAVES * sizeof(Nave));
-  jogo->foguetes = (Foguete *)malloc(NUM_FOGUETES * sizeof(Foguete));
-  jogo->num_naves = NUM_NAVES;
-  jogo->num_foguetes = NUM_FOGUETES;
-  jogo->foguetes_disponiveis = NUM_FOGUETES;
-  jogo->naves_abatidas = 0;
-  jogo->naves_atingidas = 0;
-  pthread_mutex_init(&jogo->mutex, NULL);
-
+void inicializa_jogo() {
+  naves_threads = (pthread_t *)malloc(NUM_NAVES * sizeof(pthread_t));
+  naves = (Nave *)malloc(NUM_NAVES * sizeof(Nave));
   for (int i = 0; i < NUM_NAVES; i++) {
-    int x, y;
-    do {
-      x = rand() % (tela_largura - 6);
-      y = 0;
-    } while (!is_position_free(jogo, x, y));
-
-    jogo->naves[i].x = x;
-    jogo->naves[i].y = y;
-    jogo->naves[i].ativa = 1;
+    naves[i] = *(Nave *)malloc(sizeof(Nave));
   }
 
+  foguetes_threads = (pthread_t *)malloc(NUM_FOGUETES * sizeof(pthread_t));
+  foguetes = (Foguete *)malloc(NUM_FOGUETES * sizeof(Foguete));
   for (int i = 0; i < NUM_FOGUETES; i++) {
-    jogo->foguetes[i].ativa = 0;
+    foguetes[i] = *(Foguete *)malloc(sizeof(Foguete));
   }
-
-  // Inicializa a torre no centro da tela
-  torre->x = tela_largura / 2;
-  torre->y = tela_altura - 5; // Ajusta para o tamanho da torre
+  foguetes_disponiveis = NUM_FOGUETES;
 }
 
-// Função para Movimentação das Naves
-void *movimenta_naves(void *arg) {
-  EstadoJogo *jogo = (EstadoJogo *)arg;
-  while (1) {
-    pthread_mutex_lock(&jogo->mutex);
-    for (int i = 0; i < jogo->num_naves; i++) {
-      if (jogo->naves[i].ativa) {
-        jogo->naves[i].y++;
-        if (jogo->naves[i].y >= tela_altura) {
-          jogo->naves[i].ativa = 0;
-          jogo->naves_atingidas++;
-        }
-      }
+// int todas_naves_morreram(EstadoJogo *jogo) {
+//   pthread_mutex_lock(&jogo->mutex);
+//   int all_dead = 1;
+//   for (int i = 0; i < jogo->num_naves; i++) {
+//     if (jogo->naves[i].ativa) {
+//       all_dead = 0;
+//       break;
+//     }
+//   }
+//   pthread_mutex_unlock(&jogo->mutex);
+//   return all_dead;
+// }
+
+// void verifica_fim_jogo(EstadoJogo *jogo) {
+//   pthread_mutex_lock(&jogo->mutex);
+//   int naves_abatidas = jogo->naves_abatidas;
+//   int naves_atingidas = jogo->naves_atingidas;
+//   int total_naves = jogo->num_naves;
+//   pthread_mutex_unlock(&jogo->mutex);
+//
+//   if (naves_abatidas >= total_naves / 2 && todas_naves_morreram(jogo)) {
+//     // Vitória do jogador
+//     clear();
+//     mvprintw(tela_altura / 2, tela_largura / 2 - 5, "Vitória!");
+//     refresh();
+//     usleep(2000000); // Pausa para exibir a mensagem
+//     endwin();
+//     exit(0);
+//   } else if (naves_atingidas >= total_naves / 2) {
+//     // Derrota do jogador
+//     clear();
+//     mvprintw(tela_altura / 2, tela_largura / 2 - 5, "Derrota!");
+//     refresh();
+//     usleep(2000000); // Pausa para exibir a mensagem
+//     endwin();
+//     exit(0);
+//   }
+// }
+
+void *movimenta_nave(void *arg) {
+  Nave *nave = (Nave *)arg;
+  bool fim_nave = false;
+  while (!fim_nave) {
+    pthread_mutex_lock(&nave->mutex);
+    nave->y++;
+    if (nave->y >= tela_altura) {
+      nave->ativa = false;
+      fim_nave = true;
+      pthread_mutex_lock(&mutex_naves_atingidas);
+      naves_atingidas++;
+      pthread_mutex_unlock(&mutex_naves_atingidas);
     }
-    pthread_mutex_unlock(&jogo->mutex);
+    pthread_mutex_unlock(&nave->mutex);
     usleep(VELOCIDADE_NAVES);
   }
+  return NULL;
+}
+
+void *criador_de_naves() {
+  for (int i = 0; i < NUM_NAVES; i++) {
+    int x = rand() % (tela_largura - 6);
+    int y = 0;
+
+    pthread_t thread_nave = naves_threads[i];
+    Nave *nave = &naves[i];
+    pthread_mutex_init(&nave->mutex, NULL);
+    nave->x = x;
+    nave->y = y;
+    nave->ativa = true;
+    pthread_create(&thread_nave, NULL, movimenta_nave, (void *)nave);
+    pthread_detach(thread_nave);
+    usleep(10000); // Tempo de espera até a criação da próxima nave
+  }
+
   return NULL;
 }
 
@@ -151,135 +149,134 @@ typedef struct {
   int direcao;
 } disparo_args;
 
-void *verifica_colisao(void *arg) {
-  EstadoJogo *jogo = (EstadoJogo *)arg;
-  while (1) {
-    for (int i = 0; i < NUM_NAVES; i++) {
-      pthread_mutex_lock(&jogo->mutex);
-      Nave nave = jogo->naves[i];
-      pthread_mutex_unlock(&jogo->mutex);
+// void *verifica_colisao(void *arg) {
+//   EstadoJogo *jogo = (EstadoJogo *)arg;
+//   while (1) {
+//     for (int i = 0; i < NUM_NAVES; i++) {
+//       pthread_mutex_lock(&jogo->mutex);
+//       Nave nave = jogo->naves[i];
+//       pthread_mutex_unlock(&jogo->mutex);
+//
+//       if (!nave.ativa) {
+//         continue;
+//       }
+//
+//       for (int j = 0; j < NUM_FOGUETES; j++) {
+//         pthread_mutex_lock(&jogo->mutex);
+//         Foguete foguete = jogo->foguetes[j];
+//         pthread_mutex_unlock(&jogo->mutex);
+//
+//         if (!foguete.ativa) {
+//           continue;
+//         }
+//
+//         if (foguete.x >= nave.x && foguete.x <= nave.x + 6 &&
+//             foguete.y == nave.y) {
+//           pthread_mutex_lock(&jogo->mutex);
+//           jogo->naves[i].ativa = 0;
+//           jogo->foguetes[j].ativa = 0;
+//           jogo->naves_abatidas++;
+//           pthread_mutex_unlock(&jogo->mutex);
+//         }
+//       }
+//     }
+//
+//     usleep(10000);
+//   }
+// }
+//
 
-      if (!nave.ativa) {
-        continue;
-      }
-
-      for (int j = 0; j < NUM_FOGUETES; j++) {
-        pthread_mutex_lock(&jogo->mutex);
-        Foguete foguete = jogo->foguetes[j];
-        pthread_mutex_unlock(&jogo->mutex);
-
-        if (!foguete.ativa) {
-          continue;
-        }
-
-        if (foguete.x >= nave.x && foguete.x <= nave.x + 6 &&
-            foguete.y == nave.y) {
-          pthread_mutex_lock(&jogo->mutex);
-          jogo->naves[i].ativa = 0;
-          jogo->foguetes[j].ativa = 0;
-          jogo->naves_abatidas++;
-          pthread_mutex_unlock(&jogo->mutex);
-        }
-      }
-    }
-
-    usleep(10000);
-  }
-}
-
-void *movimenta_foguete_torre(void *arg) {
-  disparo_args *args = (disparo_args *)arg;
-  Foguete *foguete = (Foguete *)args->foguete;
-  int direcao = (int)args->direcao;
-  foguete->direcao = direcao;
-  while (foguete->y > 0 && foguete->x > 0 && foguete->x < tela_largura) {
-    if (direcao == 0) {
-      foguete->x--;
-    } else if (direcao == 1) {
-      foguete->y--;
-      foguete->x -= 2;
-    } else if (direcao == 2) {
-      foguete->y--;
-    } else if (direcao == 3) {
-      foguete->y--;
-      foguete->x += 2;
-    } else {
-      foguete->x++;
-    }
-    usleep(VELOCIDADE_FOGUETES);
-  }
-  foguete->ativa = 0;
-  return NULL;
-}
+// void *movimenta_foguete_torre(void *arg) {
+//   disparo_args *args = (disparo_args *)arg;
+//   Foguete *foguete = (Foguete *)args->foguete;
+//   int direcao = (int)args->direcao;
+//   foguete->direcao = direcao;
+//   while (foguete->y > 0 && foguete->x > 0 && foguete->x < tela_largura) {
+//     if (direcao == 0) {
+//       foguete->x--;
+//     } else if (direcao == 1) {
+//       foguete->y--;
+//       foguete->x -= 2;
+//     } else if (direcao == 2) {
+//       foguete->y--;
+//     } else if (direcao == 3) {
+//       foguete->y--;
+//       foguete->x += 2;
+//     } else {
+//       foguete->x++;
+//     }
+//     usleep(VELOCIDADE_FOGUETES);
+//   }
+//   foguete->ativa = 0;
+//   return NULL;
+// }
 
 // Função para a Torre Disparar Foguetes
-void torre_dispara(EstadoJogo *jogo, Torre *torre) {
-  disparo_args *args = (disparo_args *)malloc(sizeof(disparo_args));
-  pthread_mutex_lock(&jogo->mutex);
-  if (jogo->foguetes_disponiveis > 0) {
-    for (int i = 0; i < jogo->num_foguetes; i++) {
-      if (!jogo->foguetes[i].ativa) {
-        jogo->foguetes[i].ativa = 1;
-        jogo->foguetes[i].x = torre->x;
-        jogo->foguetes[i].y = torre->y - 1;
+// void torre_dispara(EstadoJogo *jogo, Torre *torre) {
+//   disparo_args *args = (disparo_args *)malloc(sizeof(disparo_args));
+//   pthread_mutex_lock(&jogo->mutex);
+//   if (jogo->foguetes_disponiveis > 0) {
+//     for (int i = 0; i < jogo->num_foguetes; i++) {
+//       if (!jogo->foguetes[i].ativa) {
+//         jogo->foguetes[i].ativa = 1;
+//         jogo->foguetes[i].x = torre->x;
+//         jogo->foguetes[i].y = torre->y - 1;
+//
+//         // Cria uma thread para mover o foguete da torre
+//         pthread_t thread_foguete;
+//         args->foguete = &jogo->foguetes[i];
+//         args->direcao = torre->direcao;
+//         pthread_create(&thread_foguete, NULL, movimenta_foguete_torre,
+//                        (void *)args);
+//         pthread_detach(thread_foguete);
+//
+//         jogo->foguetes_disponiveis--;
+//         break;
+//       }
+//     }
+//   }
+//   pthread_mutex_unlock(&jogo->mutex);
+// }
 
-        // Cria uma thread para mover o foguete da torre
-        pthread_t thread_foguete;
-        args->foguete = &jogo->foguetes[i];
-        args->direcao = torre->direcao;
-        pthread_create(&thread_foguete, NULL, movimenta_foguete_torre,
-                       (void *)args);
-        pthread_detach(thread_foguete);
-
-        jogo->foguetes_disponiveis--;
-        break;
-      }
-    }
-  }
-  pthread_mutex_unlock(&jogo->mutex);
-}
-
-void recarrega_torre(EstadoJogo *jogo, Torre *torre) {
-  pthread_mutex_lock(&jogo->mutex);
-
-  if (jogo->foguetes_disponiveis < NUM_FOGUETES) {
-    jogo->foguetes_disponiveis++;
-  }
-
-  pthread_mutex_unlock(&jogo->mutex);
-}
+// void recarrega_torre(EstadoJogo *jogo, Torre *torre) {
+//   pthread_mutex_lock(&jogo->mutex);
+//
+//   if (jogo->foguetes_disponiveis < NUM_FOGUETES) {
+//     jogo->foguetes_disponiveis++;
+//   }
+//
+//   pthread_mutex_unlock(&jogo->mutex);
+// }
 
 // Função para Capturar Entrada do Usuário
-void *captura_entrada(void *arg) {
-  entrada_args *args = (entrada_args *)arg;
-  EstadoJogo *jogo = (EstadoJogo *)args->jogo;
-  Torre *torre = (Torre *)args->torre;
-  while (1) {
-    int ch = getch();
-    if (ch == ' ') {
-      torre_dispara(jogo, torre);
-    }
-
-    if (ch == 'r') {
-      recarrega_torre(jogo, torre);
-    }
-
-    if (ch == 'a' && torre->direcao != 0) {
-      torre->direcao -= 1;
-    } else if (ch == 'd' && torre->direcao != 4) {
-      torre->direcao += 1;
-    }
-
-    usleep(100000);
-  }
-  return NULL;
-}
-
+// void *captura_entrada(void *arg) {
+//   entrada_args *args = (entrada_args *)arg;
+//   EstadoJogo *jogo = (EstadoJogo *)args->jogo;
+//   Torre *torre = (Torre *)args->torre;
+//   while (1) {
+//     int ch = getch();
+//     if (ch == ' ') {
+//       torre_dispara(jogo, torre);
+//     }
+//
+//     if (ch == 'r') {
+//       recarrega_torre(jogo, torre);
+//     }
+//
+//     if (ch == 'a' && torre->direcao != 0) {
+//       torre->direcao -= 1;
+//     } else if (ch == 'd' && torre->direcao != 4) {
+//       torre->direcao += 1;
+//     }
+//
+//     usleep(100000);
+//   }
+//   return NULL;
+// }
+//
 // Função para Atualizar a Interface do Jogo
 void *atualiza_interface(void *arg) {
-  entrada_args *args = (entrada_args *)arg;
-  EstadoJogo *jogo = (EstadoJogo *)args->jogo;
-  Torre *torre = (Torre *)args->torre;
+  Torre *torre = (Torre *)arg;
   initscr();
   noecho();
   curs_set(FALSE);
@@ -288,17 +285,18 @@ void *atualiza_interface(void *arg) {
 
   while (1) {
     clear();
-    pthread_mutex_lock(&jogo->mutex);
-
-    for (int i = 0; i < jogo->num_naves; i++) {
-      if (jogo->naves[i].ativa) {
-        mvprintw(jogo->naves[i].y, jogo->naves[i].x, "<<(o)>>");
+    for (int i = 0; i < NUM_NAVES; i++) {
+      pthread_mutex_lock(&naves[i].mutex);
+      if (naves[i].ativa) {
+        mvprintw(naves[i].y, naves[i].x, "<<(o)>>");
       }
+      pthread_mutex_unlock(&naves[i].mutex);
     }
 
-    for (int i = 0; i < jogo->num_foguetes; i++) {
-      Foguete foguete = jogo->foguetes[i];
-      if (foguete.ativa) {
+    for (int i = 0; i < NUM_FOGUETES; i++) {
+      pthread_mutex_lock(&foguetes[i].mutex);
+      Foguete foguete = foguetes[i];
+      if (foguetes[i].ativo) {
         if (foguete.direcao == 0 || foguete.direcao == 4) {
           mvprintw(foguete.y, foguete.x, "__");
         } else if (foguete.direcao == 1) {
@@ -309,6 +307,7 @@ void *atualiza_interface(void *arg) {
           mvprintw(foguete.y, foguete.x, "/");
         }
       }
+      pthread_mutex_unlock(&foguetes[i].mutex);
     }
 
     // Desenha a torre
@@ -333,14 +332,13 @@ void *atualiza_interface(void *arg) {
     mvprintw(tela_altura - 2, torre_x - 2, " | | ");
     mvprintw(tela_altura - 1, torre_x - 2, " | | ");
 
-    mvprintw(0, 0, "Foguetes Disponíveis: %d", jogo->foguetes_disponiveis);
-    mvprintw(1, 0, "Naves Abatidas: %d", jogo->naves_abatidas);
-    mvprintw(2, 0, "Naves Atingidas: %d", jogo->naves_atingidas);
+    mvprintw(0, 0, "Foguetes Disponíveis: %d", foguetes_disponiveis);
+    mvprintw(1, 0, "Naves Abatidas: %d", naves_abatidas);
+    mvprintw(2, 0, "Naves Atingidas: %d", naves_atingidas);
 
-    pthread_mutex_unlock(&jogo->mutex);
     refresh();
 
-    verifica_fim_jogo(jogo);
+    // verifica_fim_jogo(jogo);
 
     usleep(100000);
   }
@@ -351,7 +349,6 @@ void *atualiza_interface(void *arg) {
 
 int main() {
   srand(time(NULL));
-  EstadoJogo jogo;
 
   initscr();
   cbreak();
@@ -388,26 +385,21 @@ int main() {
   getmaxyx(stdscr, tela_altura, tela_largura);
   endwin(); // End ncurses mode so we can safely initialize game
 
-  Torre torre = {tela_largura / 2, tela_altura - 4, 2};
+  Torre torre = {tela_largura / 2, tela_altura - 5, 2};
 
-  inicializa_jogo(&jogo, &torre);
+  inicializa_jogo();
 
-  pthread_t thread_naves, thread_interface, thread_entrada, thread_colisao;
+  pthread_t thread_interface, thread_criador_de_naves;
 
-  entrada_args args = {&jogo, &torre};
-  pthread_create(&thread_naves, NULL, movimenta_naves, (void *)&jogo);
-  pthread_create(&thread_interface, NULL, atualiza_interface, (void *)&args);
-  pthread_create(&thread_entrada, NULL, captura_entrada, (void *)&args);
-  pthread_create(&thread_colisao, NULL, verifica_colisao, (void *)&jogo);
+  pthread_create(&thread_criador_de_naves, NULL, criador_de_naves, NULL);
+  pthread_create(&thread_interface, NULL, atualiza_interface, (void *)&torre);
+  // pthread_create(&thread_entrada, NULL, captura_entrada, (void *)&args);
+  // pthread_create(&thread_colisao, NULL, verifica_colisao, (void *)&jogo);
 
-  pthread_join(thread_naves, NULL);
+  // pthread_join(thread_naves, NULL);
   pthread_join(thread_interface, NULL);
-  pthread_join(thread_entrada, NULL);
-  pthread_join(thread_colisao, NULL);
-
-  pthread_mutex_destroy(&jogo.mutex);
-  free(jogo.naves);
-  free(jogo.foguetes);
+  // pthread_join(thread_entrada, NULL);
+  // pthread_join(thread_colisao, NULL);
 
   return 0;
 }
