@@ -141,7 +141,9 @@ void *criador_de_naves() {
     nave->ativa = true;
     pthread_create(&thread_nave, NULL, movimenta_nave, (void *)nave);
     pthread_detach(thread_nave);
-    usleep(10000); // Tempo de espera até a criação da próxima nave
+
+    // Tempo de espera até a criação da próxima nave
+    usleep(VELOCIDADE_NAVES * 3 + 1000000);
   }
 
   return NULL;
@@ -152,42 +154,48 @@ typedef struct {
   int direcao;
 } disparo_args;
 
-// void *verifica_colisao(void *arg) {
-//   EstadoJogo *jogo = (EstadoJogo *)arg;
-//   while (1) {
-//     for (int i = 0; i < NUM_NAVES; i++) {
-//       pthread_mutex_lock(&jogo->mutex);
-//       Nave nave = jogo->naves[i];
-//       pthread_mutex_unlock(&jogo->mutex);
-//
-//       if (!nave.ativa) {
-//         continue;
-//       }
-//
-//       for (int j = 0; j < NUM_FOGUETES; j++) {
-//         pthread_mutex_lock(&jogo->mutex);
-//         Foguete foguete = jogo->foguetes[j];
-//         pthread_mutex_unlock(&jogo->mutex);
-//
-//         if (!foguete.ativa) {
-//           continue;
-//         }
-//
-//         if (foguete.x >= nave.x && foguete.x <= nave.x + 6 &&
-//             foguete.y == nave.y) {
-//           pthread_mutex_lock(&jogo->mutex);
-//           jogo->naves[i].ativa = 0;
-//           jogo->foguetes[j].ativa = 0;
-//           jogo->naves_abatidas++;
-//           pthread_mutex_unlock(&jogo->mutex);
-//         }
-//       }
-//     }
-//
-//     usleep(10000);
-//   }
-// }
-//
+void *verifica_colisao() {
+  while (1) {
+    for (int i = 0; i < NUM_NAVES; i++) {
+      // pthread_mutex_lock(&naves[i].mutex);
+      Nave *nave = &naves[i];
+
+      if (!nave->ativa) {
+        // pthread_mutex_unlock(&nave->mutex);
+        continue;
+      }
+
+      // pthread_mutex_unlock(&nave->mutex);
+      for (int j = 0; j < NUM_FOGUETES; j++) {
+        // pthread_mutex_lock(&foguetes[i].mutex);
+        Foguete *foguete = &foguetes[j];
+
+        if (!foguete->ativo) {
+          // pthread_mutex_unlock(&foguete->mutex);
+          continue;
+        }
+
+        // pthread_mutex_lock(&nave->mutex);
+        if (foguete->x >= nave->x && foguete->x <= nave->x + 6 &&
+            foguete->y == nave->y) {
+          nave->ativa = false;
+          // pthread_mutex_unlock(&nave->mutex);
+          foguete->ativo = false;
+          // pthread_mutex_unlock(&foguete->mutex);
+
+          // pthread_mutex_lock(&mutex_naves_abatidas);
+          naves_abatidas++;
+          // pthread_mutex_unlock(&mutex_naves_abatidas);
+          break;
+        } else {
+          // pthread_mutex_unlock(&foguete->mutex);
+        }
+      }
+    }
+
+    usleep(10000);
+  }
+}
 
 void *movimenta_foguete_torre(void *arg) {
   disparo_args *args = (disparo_args *)arg;
@@ -225,7 +233,7 @@ void torre_dispara(Torre *torre) {
         pthread_mutex_lock(&torre->mutex);
         foguetes[i].ativo = true;
         foguetes[i].x = torre->x;
-        foguetes[i].y = torre->y - 1;
+        foguetes[i].y = torre->y;
 
         // Cria uma thread para mover o foguete da torre
         pthread_t thread_foguete;
@@ -416,17 +424,18 @@ int main() {
 
   inicializa_jogo();
 
-  pthread_t thread_interface, thread_criador_de_naves, thread_inputs;
+  pthread_t thread_interface, thread_criador_de_naves, thread_inputs,
+      thread_colisao;
 
   pthread_create(&thread_criador_de_naves, NULL, criador_de_naves, NULL);
   pthread_create(&thread_interface, NULL, atualiza_interface, (void *)torre);
   pthread_create(&thread_inputs, NULL, captura_entrada, (void *)torre);
-  // pthread_create(&thread_colisao, NULL, verifica_colisao, (void *)&jogo);
+  pthread_create(&thread_colisao, NULL, verifica_colisao, NULL);
 
   pthread_join(thread_criador_de_naves, NULL);
   pthread_join(thread_interface, NULL);
   pthread_join(thread_inputs, NULL);
-  // pthread_join(thread_colisao, NULL);
+  pthread_join(thread_colisao, NULL);
 
   return 0;
 }
