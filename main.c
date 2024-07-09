@@ -203,7 +203,7 @@ void *movimenta_foguete_torre(void *arg) {
   foguete->direcao = direcao;
   while (foguete->y > 0 && foguete->x > 0 && foguete->x < tela_largura) {
     if (direcao == 0) {
-      foguete->x--;
+      foguete->x -= 2;
     } else if (direcao == 1) {
       foguete->y--;
       foguete->x -= 2;
@@ -213,7 +213,7 @@ void *movimenta_foguete_torre(void *arg) {
       foguete->y--;
       foguete->x += 2;
     } else {
-      foguete->x++;
+      foguete->x += 2;
     }
     usleep(VELOCIDADE_FOGUETES);
   }
