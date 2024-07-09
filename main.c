@@ -252,31 +252,31 @@ typedef struct {
 // }
 
 // Função para Capturar Entrada do Usuário
-// void *captura_entrada(void *arg) {
-//   entrada_args *args = (entrada_args *)arg;
-//   EstadoJogo *jogo = (EstadoJogo *)args->jogo;
-//   Torre *torre = (Torre *)args->torre;
-//   while (1) {
-//     int ch = getch();
-//     if (ch == ' ') {
-//       torre_dispara(jogo, torre);
-//     }
-//
-//     if (ch == 'r') {
-//       recarrega_torre(jogo, torre);
-//     }
-//
-//     if (ch == 'a' && torre->direcao != 0) {
-//       torre->direcao -= 1;
-//     } else if (ch == 'd' && torre->direcao != 4) {
-//       torre->direcao += 1;
-//     }
-//
-//     usleep(100000);
-//   }
-//   return NULL;
-// }
-//
+void *captura_entrada(void *arg) {
+  Torre *torre = (Torre *)arg;
+  while (1) {
+    int ch = getch();
+    // if (ch == ' ') {
+    //   torre_dispara(jogo, torre);
+    // }
+
+    // if (ch == 'r') {
+    //   recarrega_torre(jogo, torre);
+    // }
+
+    pthread_mutex_lock(&torre->mutex);
+    if (ch == 'a' && torre->direcao != 0) {
+      torre->direcao -= 1;
+    } else if (ch == 'd' && torre->direcao != 4) {
+      torre->direcao += 1;
+    }
+    pthread_mutex_unlock(&torre->mutex);
+
+    usleep(100000);
+  }
+  return NULL;
+}
+
 // Função para Atualizar a Interface do Jogo
 void *atualiza_interface(void *arg) {
   Torre *torre = (Torre *)arg;
@@ -396,16 +396,16 @@ int main() {
 
   inicializa_jogo();
 
-  pthread_t thread_interface, thread_criador_de_naves;
+  pthread_t thread_interface, thread_criador_de_naves, thread_inputs;
 
   pthread_create(&thread_criador_de_naves, NULL, criador_de_naves, NULL);
   pthread_create(&thread_interface, NULL, atualiza_interface, (void *)torre);
-  // pthread_create(&thread_entrada, NULL, captura_entrada, (void *)&args);
+  pthread_create(&thread_inputs, NULL, captura_entrada, (void *)torre);
   // pthread_create(&thread_colisao, NULL, verifica_colisao, (void *)&jogo);
 
-  // pthread_join(thread_naves, NULL);
+  pthread_join(thread_criador_de_naves, NULL);
   pthread_join(thread_interface, NULL);
-  // pthread_join(thread_entrada, NULL);
+  pthread_join(thread_inputs, NULL);
   // pthread_join(thread_colisao, NULL);
 
   return 0;
