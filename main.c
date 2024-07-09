@@ -45,6 +45,8 @@ pthread_mutex_t mutex_naves_abatidas;
 int naves_atingidas = 0;
 pthread_mutex_t mutex_naves_atingidas;
 
+pthread_mutex_t mutex_renderizacao;
+
 int VELOCIDADE_NAVES = 500000;
 int VELOCIDADE_FOGUETES = 20000;
 
@@ -82,22 +84,26 @@ int todas_naves_morreram() {
 }
 
 void *verifica_fim_de_jogo() {
-  if (naves_abatidas >= NUM_NAVES / 2 && todas_naves_morreram()) {
-    // Vitória do jogador
-    clear();
-    mvprintw(tela_altura / 2, tela_largura / 2 - 5, "Vitória!");
-    refresh();
-    usleep(2000000); // Pausa para exibir a mensagem
-    endwin();
-    exit(0);
-  } else if (naves_atingidas >= NUM_NAVES / 2) {
-    // Derrota do jogador
-    clear();
-    mvprintw(tela_altura / 2, tela_largura / 2 - 5, "Derrota!");
-    refresh();
-    usleep(2000000); // Pausa para exibir a mensagem
-    endwin();
-    exit(0);
+  while (true) {
+    if (naves_abatidas > NUM_NAVES / 2 && todas_naves_morreram()) {
+      // Vitória do jogador
+      pthread_mutex_lock(&mutex_renderizacao);
+      clear();
+      mvprintw(tela_altura / 2, tela_largura / 2 - 5, "Vitória!");
+      refresh();
+      usleep(2000000); // Pausa para exibir a mensagem
+      endwin();
+      exit(0);
+    } else if (naves_atingidas > NUM_NAVES / 2) {
+      // Derrota do jogador
+      pthread_mutex_lock(&mutex_renderizacao);
+      clear();
+      mvprintw(tela_altura / 2, tela_largura / 2 - 5, "Derrota!");
+      refresh();
+      usleep(2000000); // Pausa para exibir a mensagem
+      endwin();
+      exit(0);
+    }
   }
 }
 
@@ -107,7 +113,7 @@ void *movimenta_nave(void *arg) {
   while (!fim_nave) {
     pthread_mutex_lock(&nave->mutex);
     nave->y++;
-    if (nave->y >= tela_altura) {
+    if (nave->y >= tela_altura && nave->ativa) {
       nave->ativa = false;
       fim_nave = true;
       pthread_mutex_lock(&mutex_naves_atingidas);
@@ -296,6 +302,7 @@ void *atualiza_interface(void *arg) {
   getmaxyx(stdscr, tela_altura, tela_largura);
 
   while (1) {
+    pthread_mutex_lock(&mutex_renderizacao);
     clear();
     for (int i = 0; i < NUM_NAVES; i++) {
       pthread_mutex_lock(&naves[i].mutex);
@@ -364,6 +371,7 @@ void *atualiza_interface(void *arg) {
 
     // verifica_fim_jogo(jogo);
 
+    pthread_mutex_unlock(&mutex_renderizacao);
     usleep(100000);
   }
 
@@ -424,12 +432,13 @@ int main() {
   pthread_create(&thread_interface, NULL, atualiza_interface, (void *)torre);
   pthread_create(&thread_inputs, NULL, captura_entrada, (void *)torre);
   pthread_create(&thread_colisao, NULL, verifica_colisao, NULL);
-  // pthread_create(&thread_fim_de_jogo, NULL, verifica_fim_de_jogo, NULL);
+  pthread_create(&thread_fim_de_jogo, NULL, verifica_fim_de_jogo, NULL);
 
   pthread_join(thread_criador_de_naves, NULL);
   pthread_join(thread_interface, NULL);
   pthread_join(thread_inputs, NULL);
   pthread_join(thread_colisao, NULL);
+  pthread_join(thread_fim_de_jogo, NULL);
 
   return 0;
 }
