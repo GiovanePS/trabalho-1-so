@@ -251,15 +251,13 @@ void torre_dispara(Torre *torre) {
   }
 }
 
-// void recarrega_torre(EstadoJogo *jogo, Torre *torre) {
-//   pthread_mutex_lock(&jogo->mutex);
-//
-//   if (jogo->foguetes_disponiveis < NUM_FOGUETES) {
-//     jogo->foguetes_disponiveis++;
-//   }
-//
-//   pthread_mutex_unlock(&jogo->mutex);
-// }
+void recarrega_torre() {
+  pthread_mutex_lock(&mutex_foguetes_disponiveis);
+  if (foguetes_disponiveis < NUM_FOGUETES) {
+    foguetes_disponiveis++;
+  }
+  pthread_mutex_unlock(&mutex_foguetes_disponiveis);
+}
 
 // Função para Capturar Entrada do Usuário
 void *captura_entrada(void *arg) {
@@ -270,9 +268,9 @@ void *captura_entrada(void *arg) {
       torre_dispara(torre);
     }
 
-    // if (ch == 'r') {
-    //   recarrega_torre(jogo, torre);
-    // }
+    if (ch == 'r') {
+      recarrega_torre();
+    }
 
     pthread_mutex_lock(&torre->mutex);
     if (ch == 'a' && torre->direcao != 0) {
