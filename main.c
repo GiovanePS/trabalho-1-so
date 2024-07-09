@@ -24,11 +24,14 @@ typedef struct {
 typedef struct {
   int x, y;
   int direcao;
+  pthread_mutex_t mutex;
 } Torre;
 
 typedef struct {
   Torre *torre;
 } entrada_args;
+
+Torre *torre;
 
 int NUM_NAVES;
 int NUM_FOGUETES;
@@ -385,14 +388,18 @@ int main() {
   getmaxyx(stdscr, tela_altura, tela_largura);
   endwin(); // End ncurses mode so we can safely initialize game
 
-  Torre torre = {tela_largura / 2, tela_altura - 5, 2};
+  torre = (Torre *)malloc(sizeof(Torre));
+  torre->x = tela_largura / 2;
+  torre->y = tela_altura - 5;
+  torre->direcao = 2;
+  pthread_mutex_init(&torre->mutex, NULL);
 
   inicializa_jogo();
 
   pthread_t thread_interface, thread_criador_de_naves;
 
   pthread_create(&thread_criador_de_naves, NULL, criador_de_naves, NULL);
-  pthread_create(&thread_interface, NULL, atualiza_interface, (void *)&torre);
+  pthread_create(&thread_interface, NULL, atualiza_interface, (void *)torre);
   // pthread_create(&thread_entrada, NULL, captura_entrada, (void *)&args);
   // pthread_create(&thread_colisao, NULL, verifica_colisao, (void *)&jogo);
 
