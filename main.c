@@ -300,6 +300,7 @@ void *atualiza_interface(void *arg) {
       pthread_mutex_lock(&foguetes[i].mutex);
       Foguete foguete = foguetes[i];
       if (foguetes[i].ativo) {
+        pthread_mutex_lock(&torre->mutex);
         if (foguete.direcao == 0 || foguete.direcao == 4) {
           mvprintw(foguete.y, foguete.x, "__");
         } else if (foguete.direcao == 1) {
@@ -309,12 +310,14 @@ void *atualiza_interface(void *arg) {
         } else if (foguete.direcao == 3) {
           mvprintw(foguete.y, foguete.x, "/");
         }
+        pthread_mutex_unlock(&torre->mutex);
       }
       pthread_mutex_unlock(&foguetes[i].mutex);
     }
 
     // Desenha a torre
     int torre_x = tela_largura / 2;
+    pthread_mutex_lock(&torre->mutex);
     if (torre->direcao == 0) {
       mvprintw(tela_altura - 5, torre_x - 3, "____");
     } else if (torre->direcao == 1) {
@@ -329,15 +332,24 @@ void *atualiza_interface(void *arg) {
     } else {
       mvprintw(tela_altura - 5, torre_x, "____");
     }
+    pthread_mutex_unlock(&torre->mutex);
 
     mvprintw(tela_altura - 4, torre_x - 1, "/|\\");
     mvprintw(tela_altura - 3, torre_x - 2, "/_|_\\");
     mvprintw(tela_altura - 2, torre_x - 2, " | | ");
     mvprintw(tela_altura - 1, torre_x - 2, " | | ");
 
+    pthread_mutex_lock(&mutex_foguetes_disponiveis);
     mvprintw(0, 0, "Foguetes Disponíveis: %d", foguetes_disponiveis);
+    pthread_mutex_unlock(&mutex_foguetes_disponiveis);
+
+    pthread_mutex_lock(&mutex_naves_abatidas);
     mvprintw(1, 0, "Naves Abatidas: %d", naves_abatidas);
+    pthread_mutex_unlock(&mutex_naves_abatidas);
+
+    pthread_mutex_lock(&mutex_naves_atingidas);
     mvprintw(2, 0, "Naves Atingidas: %d", naves_atingidas);
+    pthread_mutex_unlock(&mutex_naves_atingidas);
 
     refresh();
 
