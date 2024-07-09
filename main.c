@@ -189,57 +189,67 @@ typedef struct {
 // }
 //
 
-// void *movimenta_foguete_torre(void *arg) {
-//   disparo_args *args = (disparo_args *)arg;
-//   Foguete *foguete = (Foguete *)args->foguete;
-//   int direcao = (int)args->direcao;
-//   foguete->direcao = direcao;
-//   while (foguete->y > 0 && foguete->x > 0 && foguete->x < tela_largura) {
-//     if (direcao == 0) {
-//       foguete->x--;
-//     } else if (direcao == 1) {
-//       foguete->y--;
-//       foguete->x -= 2;
-//     } else if (direcao == 2) {
-//       foguete->y--;
-//     } else if (direcao == 3) {
-//       foguete->y--;
-//       foguete->x += 2;
-//     } else {
-//       foguete->x++;
-//     }
-//     usleep(VELOCIDADE_FOGUETES);
-//   }
-//   foguete->ativa = 0;
-//   return NULL;
-// }
+void *movimenta_foguete_torre(void *arg) {
+  disparo_args *args = (disparo_args *)arg;
+  Foguete *foguete = (Foguete *)args->foguete;
+  int direcao = (int)args->direcao;
+  foguete->direcao = direcao;
+  while (foguete->y > 0 && foguete->x > 0 && foguete->x < tela_largura) {
+    if (direcao == 0) {
+      foguete->x--;
+    } else if (direcao == 1) {
+      foguete->y--;
+      foguete->x -= 2;
+    } else if (direcao == 2) {
+      foguete->y--;
+    } else if (direcao == 3) {
+      foguete->y--;
+      foguete->x += 2;
+    } else {
+      foguete->x++;
+    }
+    usleep(VELOCIDADE_FOGUETES);
+  }
+  foguete->ativo = false;
+  return NULL;
+}
 
 // Função para a Torre Disparar Foguetes
-// void torre_dispara(EstadoJogo *jogo, Torre *torre) {
-//   disparo_args *args = (disparo_args *)malloc(sizeof(disparo_args));
-//   pthread_mutex_lock(&jogo->mutex);
-//   if (jogo->foguetes_disponiveis > 0) {
-//     for (int i = 0; i < jogo->num_foguetes; i++) {
-//       if (!jogo->foguetes[i].ativa) {
-//         jogo->foguetes[i].ativa = 1;
-//         jogo->foguetes[i].x = torre->x;
-//         jogo->foguetes[i].y = torre->y - 1;
-//
-//         // Cria uma thread para mover o foguete da torre
-//         pthread_t thread_foguete;
-//         args->foguete = &jogo->foguetes[i];
-//         args->direcao = torre->direcao;
-//         pthread_create(&thread_foguete, NULL, movimenta_foguete_torre,
-//                        (void *)args);
-//         pthread_detach(thread_foguete);
-//
-//         jogo->foguetes_disponiveis--;
-//         break;
-//       }
-//     }
-//   }
-//   pthread_mutex_unlock(&jogo->mutex);
-// }
+void torre_dispara(Torre *torre) {
+  pthread_mutex_lock(&mutex_foguetes_disponiveis);
+  if (foguetes_disponiveis > 0) {
+    pthread_mutex_unlock(&mutex_foguetes_disponiveis);
+    for (int i = 0; i < NUM_FOGUETES; i++) {
+      pthread_mutex_lock(&foguetes[i].mutex);
+      if (!foguetes[i].ativo) {
+        pthread_mutex_lock(&torre->mutex);
+        foguetes[i].ativo = true;
+        foguetes[i].x = torre->x;
+        foguetes[i].y = torre->y - 1;
+
+        // Cria uma thread para mover o foguete da torre
+        pthread_t thread_foguete;
+        disparo_args *args = (disparo_args *)malloc(sizeof(disparo_args));
+        args->foguete = &foguetes[i];
+        args->direcao = torre->direcao;
+        pthread_mutex_unlock(&torre->mutex);
+        pthread_create(&thread_foguete, NULL, movimenta_foguete_torre,
+                       (void *)args);
+        pthread_mutex_unlock(&foguetes[i].mutex);
+        pthread_detach(thread_foguete);
+
+        pthread_mutex_lock(&mutex_foguetes_disponiveis);
+        foguetes_disponiveis--;
+        pthread_mutex_unlock(&mutex_foguetes_disponiveis);
+        break;
+      } else {
+        pthread_mutex_unlock(&foguetes[i].mutex);
+      }
+    }
+  } else {
+    pthread_mutex_unlock(&mutex_foguetes_disponiveis);
+  }
+}
 
 // void recarrega_torre(EstadoJogo *jogo, Torre *torre) {
 //   pthread_mutex_lock(&jogo->mutex);
@@ -256,9 +266,9 @@ void *captura_entrada(void *arg) {
   Torre *torre = (Torre *)arg;
   while (1) {
     int ch = getch();
-    // if (ch == ' ') {
-    //   torre_dispara(jogo, torre);
-    // }
+    if (ch == ' ') {
+      torre_dispara(torre);
+    }
 
     // if (ch == 'r') {
     //   recarrega_torre(jogo, torre);
